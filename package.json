@@ -1,0 +1,18 @@
+{
+  "name": "export-enhancer",
+  "version": "1.0.0",
+  "description": "A script to fetch stories and comments from Pivotal Tracker API.",
+  "main": "export_enhancer.js",
+  "scripts": {
+    "start": "node export_enhancer.js"
+  },
+  "dependencies": {
+    "axios": "^0.21.1",
+    "csv-parser": "^3.0.0",
+    "json2csv": "^5.0.6",
+    "lodash": "^4.17.21",
+    "yargs": "^17.2.1"
+  },
+  "author": "",
+  "license": "ISC"
+}
