@@ -61,7 +61,7 @@ async function fetchComments(url, limit = 100, offset = 0, allComments = {}) {
                 "Content-Type": "application/json"
             },
             params: {
-                fields: 'comments(id,text,attachments(id,filename))',
+                fields: 'name,comments(id,text,attachments(id,filename))',
                 limit: limit,
                 offset: offset
             }
@@ -70,13 +70,13 @@ async function fetchComments(url, limit = 100, offset = 0, allComments = {}) {
         const comments = _.keyBy(response.data, 'id');
         Object.assign(allComments, comments);
 
-        const paginationOffset = parseInt(response.headers['X-Tracker-Pagination-Offset'], 10);
-        const paginationLimit = parseInt(response.headers['X-Tracker-Pagination-Limit'], 10);
-        const paginationReturned = parseInt(response.headers['X-Tracker-Pagination-Returned'], 10);
-        const paginationTotal = parseInt(response.headers['X-Tracker-Pagination-Total'], 10);
-
-        if (paginationReturned >= paginationTotal) {
-            return fetchComments(url, paginationLimit, paginationOffset + paginationLimit, allComments);
+        const paginationOffset = parseInt(response.headers['x-tracker-pagination-offset'], 10);
+        const paginationLimit = parseInt(response.headers['x-tracker-pagination-limit'], 10);
+        const paginationReturned = parseInt(response.headers['x-tracker-pagination-returned'], 10);
+        const paginationTotal = parseInt(response.headers['x-tracker-pagination-total'], 10);
+        console.log(`Fetched ${paginationReturned} stories of a Total ${paginationTotal}`);
+        if ((paginationOffset + paginationLimit) < paginationTotal) {
+            return await fetchComments(url, paginationLimit, paginationOffset + paginationLimit, allComments);
         } else {
             return allComments;
         }
@@ -88,15 +88,16 @@ async function fetchComments(url, limit = 100, offset = 0, allComments = {}) {
 
 
 async function addAttachmentNames(comments, exportedStories) {
-    const storiesFilePath = path.join(directoryPath, exportedStories);
+    const storiesFilePath = exportedStories;
     const transformedRows = [];
     let headers = [];
+    let originalHeaders = [];
     const headerCount = {};
 
     return new Promise((resolve, reject) => {
         fs.createReadStream(storiesFilePath)
             .pipe(fastcsv.parse({ headers: (headerList) => {
-
+                originalHeaders = headerList;
                 const headers = headerList.map(header => {
                     if (headerCount[header] >= 1) {
                         headerCount[header]++;
@@ -136,14 +137,18 @@ async function addAttachmentNames(comments, exportedStories) {
 
                     }                    
 
-                    row.attachments = storyComments.comments.filter(comment => !_.isEmpty(comment.attachments)).map(comment => comment.attachments.map(att => `* ${att.filename}`).join('\n')).join('\n');
                 } else {
                     row.attachments = '';
                 }
                 transformedRows.push(row);
             })
             .on('end', () => {
-                const csvData = parse(transformedRows, { fields: headers });
+                const parsedCSVData = parse(transformedRows, { fields: headers });
+                const csvLines = parsedCSVData.split('\n');
+                csvLines.shift(); // Remove the first line (headers)
+                const newHeaderLine = originalHeaders.map(header => `"${header}"`).join(',');
+                const csvData = [newHeaderLine, ...csvLines].join('\n');
+
                 const transformedFilePath = path.join(directoryPath, path.basename(exportedStories));
                 fs.promises.writeFile(transformedFilePath, csvData)
                     .then(() => {
@@ -161,49 +166,6 @@ async function addAttachmentNames(comments, exportedStories) {
             });
     });
 }
-
-// async function addAttachmentNames(comments, exportedStories) {
-//     const storiesFilePath = path.join(directoryPath, exportedStories);
-//     const transformedRows = [];
-//     let headers = [];
-
-//     return new Promise((resolve, reject) => {
-//         fs.createReadStream(storiesFilePath)
-//             .pipe(csv())
-//             .on('headers', (headerList) => {
-//                 headers = headerList;
-//                 headers.push('attachments'); // Add the new column for attachments
-//             })
-//             .on('data', (row) => {
-//                 const storyId = row['Id'];
-
-//                 const storyComments = comments[`${storyId}`];
-//                 if (storyComments) {
-//                     row.attachments = storyComments.comments.filter(comment => !_.isEmpty(comment.attachments)).map(comment => comment.attachments.map(att => `* ${att.filename}`).join('\n')).join('\n');
-//                 } else {
-//                     row.attachments = '';
-//                 }
-//                 transformedRows.push(row);
-//             })
-//             .on('end', () => {
-//                 const csvData = parse(transformedRows, { fields: headers });
-//                 const transformedFilePath = path.join(directoryPath, path.basename(exportedStories));
-//                 fs.promises.writeFile(transformedFilePath, csvData)
-//                     .then(() => {
-//                         console.log(`Transformed CSV saved to ${transformedFilePath}`);
-//                         resolve();
-//                     })
-//                     .catch(error => {
-//                         console.error(`Error saving transformed CSV:`, error);
-//                         reject(error);
-//                     });
-//             })
-//             .on('error', (error) => {
-//                 console.error('Error reading CSV:', error);
-//                 reject(error);
-//             });
-//     });
-// }
 
 
 async function saveToFile(fileName, data) {
