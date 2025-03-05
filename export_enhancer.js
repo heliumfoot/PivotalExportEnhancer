@@ -36,7 +36,7 @@ const argv = yargs(hideBin(process.argv))
     alias: 'h',
     type: 'string',
     description: 'File name for exported history',
-    demandOption: false
+    demandOption: true
   })
   .argv;
 
@@ -53,7 +53,35 @@ if (!apiKey || !projectId || !directoryPath) {
 
 const apiUrl = `https://www.pivotaltracker.com/services/v5/projects/${projectId}/stories`;
 
-async function fetchComments(url, limit = 100, offset = 0, allComments = {}) {
+async function parseExportedHistory(filePath) {
+    const historyDict = {};
+
+    return new Promise((resolve, reject) => {
+        fs.createReadStream(filePath)
+            .pipe(fastcsv.parse({ headers: true }))
+            .on('data', (row) => {
+                // console.log(JSON.stringify(row));
+                const id = row['ID'];
+                const message = row['Message'];
+                const occurredAt = row['Occurred At'];
+                const concatenatedValue = `${message} [${occurredAt}]`;
+                
+                if (!historyDict[id]) {
+                    historyDict[id] = [];
+                }
+                historyDict[id].push(concatenatedValue);
+            })
+            .on('end', () => {
+                resolve(historyDict);
+            })
+            .on('error', (error) => {
+                console.error('Error reading CSV:', error);
+                reject(error);
+            });
+    });
+}
+
+async function fetchStoriesByStoryID(url, limit = 100, offset = 0, allStoriesByStoryID = {}) {
     try {
         const response = await axios.get(url, {
             headers: { 
@@ -61,14 +89,14 @@ async function fetchComments(url, limit = 100, offset = 0, allComments = {}) {
                 "Content-Type": "application/json"
             },
             params: {
-                fields: 'name,comments(id,text,attachments(id,filename))',
+                fields: 'pull_requests(id,host_url,owner,repo,number,original_url),branches(id,host_url,owner,repo,name,original_url),name,comments(id,text,attachments(id,filename))',
                 limit: limit,
                 offset: offset
             }
         });
 
-        const comments = _.keyBy(response.data, 'id');
-        Object.assign(allComments, comments);
+        const storiesByStoryID = _.keyBy(response.data, 'id');
+        Object.assign(allStoriesByStoryID, storiesByStoryID);
 
         const paginationOffset = parseInt(response.headers['x-tracker-pagination-offset'], 10);
         const paginationLimit = parseInt(response.headers['x-tracker-pagination-limit'], 10);
@@ -76,18 +104,19 @@ async function fetchComments(url, limit = 100, offset = 0, allComments = {}) {
         const paginationTotal = parseInt(response.headers['x-tracker-pagination-total'], 10);
         console.log(`Fetched ${paginationReturned} stories of a Total ${paginationTotal}`);
         if ((paginationOffset + paginationLimit) < paginationTotal) {
-            return await fetchComments(url, paginationLimit, paginationOffset + paginationLimit, allComments);
+            return await fetchStoriesByStoryID(url, paginationLimit, paginationOffset + paginationLimit, allStoriesByStoryID);
         } else {
-            return allComments;
+            return allStoriesByStoryID;
         }
     } catch (error) {
         console.error('Error fetching stories:', error);
-        return allComments;
+        return allStoriesByStoryID;
     }
 }
 
 
-async function addAttachmentNames(comments, exportedStories) {
+
+async function addAdditionalInformation(storiesByStoryID, exportedStories, historyByStoryID) {
     const storiesFilePath = exportedStories;
     const transformedRows = [];
     let headers = [];
@@ -108,15 +137,22 @@ async function addAttachmentNames(comments, exportedStories) {
                         return `${header}${suffix}`;
                     }
                 });
+                const lastCommentNumber = headerCount["Comment"]
+                const lastCommentHeader = `Comment_${lastCommentNumber}`;
+                const newCommentHeader = `Comment_${lastCommentNumber + 1}`;
+                const lastCommentHeaderIndex = headers.indexOf(lastCommentHeader);
+                const newHeaders = [...headers];
+                newHeaders.splice(lastCommentHeaderIndex + 1, 0, newCommentHeader);
+                originalHeaders.splice(lastCommentHeaderIndex + 1, 0, "Comment");
+
                 return headers;
             }}))
             .on('headers', (headerList) => {
                 headers = headerList;
-                headers.push('attachments'); // Add the new column for attachments
             })
             .on('data', (row) => {
                 const storyId = row[Object.keys(row)[0]];
-                const storyComments = comments[`${storyId}`];
+                const storyComments = storiesByStoryID[`${storyId}`];
                 if (storyComments) {
                     let commentIndex = 1;
                     let commentField = `Comment_${commentIndex}`;
@@ -137,9 +173,22 @@ async function addAttachmentNames(comments, exportedStories) {
 
                     }                    
 
-                } else {
-                    row.attachments = '';
+
                 }
+
+                const newCommentNumber = (storyComments?.comments ?? []).length + 1;
+                const projectInfoCommentFieldName = `Comment_${newCommentNumber}`;
+                const historyMessages = _.isEmpty(historyByStoryID[`${storyId}`]) ? [] : historyByStoryID[`${storyId}`]?.map(historyEntry => `* ${historyEntry}`);
+
+                const pullRequests = storyComments?.pull_requests ?? [];
+                const pullRequestLinks = pullRequests.map(pullRequest => `* ${pullRequest.host_url}${pullRequest.owner}/${pullRequest.repo}/pull/${pullRequest.number}`);
+                const branches = storyComments?.branches ?? [];
+                const branchLinks = branches.map(branch => `* ${branch.host_url}${branch.owner}/${branch.repo}/tree/${branch.name}`);
+                
+
+                row[projectInfoCommentFieldName] = ["PivotalTracker Project Information", "---", "Branches:", ...branchLinks, "\nPull Requests:", ...pullRequestLinks, "\nAvailable History:", ...historyMessages].filter(Boolean)
+                    .join('\n');
+
                 transformedRows.push(row);
             })
             .on('end', () => {
@@ -179,9 +228,8 @@ async function saveToFile(fileName, data) {
 }
 
 async function main() {
-    const comments = await fetchComments(apiUrl);
-    await addAttachmentNames(comments, exportedStoriesPath);
-    await saveToFile('stories_with_comments.json', comments);
+    const [stories, historyByStoryID] = await Promise.all([fetchStoriesByStoryID(apiUrl), parseExportedHistory(exportedHistoryPath)]);
+    await addAdditionalInformation(stories, exportedStoriesPath, historyByStoryID);
 }
 
 main();
