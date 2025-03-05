@@ -53,7 +53,7 @@ if (!apiKey || !projectId || !directoryPath) {
 
 const apiUrl = `https://www.pivotaltracker.com/services/v5/projects/${projectId}/stories`;
 
-async function fetchComments(url) {
+async function fetchComments(url, limit = 100, offset = 0, allComments = {}) {
     try {
         const response = await axios.get(url, {
             headers: { 
@@ -61,16 +61,31 @@ async function fetchComments(url) {
                 "Content-Type": "application/json"
             },
             params: {
-                fields: 'comments(id,text,attachments(id,filename))'
+                fields: 'comments(id,text,attachments(id,filename))',
+                limit: limit,
+                offset: offset
             }
         });
+
         const comments = _.keyBy(response.data, 'id');
-        return comments;
+        Object.assign(allComments, comments);
+
+        const paginationOffset = parseInt(response.headers['X-Tracker-Pagination-Offset'], 10);
+        const paginationLimit = parseInt(response.headers['X-Tracker-Pagination-Limit'], 10);
+        const paginationReturned = parseInt(response.headers['X-Tracker-Pagination-Returned'], 10);
+        const paginationTotal = parseInt(response.headers['X-Tracker-Pagination-Total'], 10);
+
+        if (paginationReturned >= paginationTotal) {
+            return fetchComments(url, paginationLimit, paginationOffset + paginationLimit, allComments);
+        } else {
+            return allComments;
+        }
     } catch (error) {
         console.error('Error fetching stories:', error);
-        return [];
+        return allComments;
     }
 }
+
 
 async function addAttachmentNames(comments, exportedStories) {
     const storiesFilePath = path.join(directoryPath, exportedStories);
