@@ -3,8 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
-const csv = require('csv-parser');
 const { parse } = require('json2csv');
+const fastcsv = require('fast-csv');
 const _ = require('lodash');
 
 const argv = yargs(hideBin(process.argv))
@@ -76,19 +76,51 @@ async function addAttachmentNames(comments, exportedStories) {
     const storiesFilePath = path.join(directoryPath, exportedStories);
     const transformedRows = [];
     let headers = [];
+    const headerCount = {};
 
     return new Promise((resolve, reject) => {
         fs.createReadStream(storiesFilePath)
-            .pipe(csv())
+            .pipe(fastcsv.parse({ headers: (headerList) => {
+
+                const headers = headerList.map(header => {
+                    if (headerCount[header] >= 1) {
+                        headerCount[header]++;
+                        return `${header}_${headerCount[header]}`;
+                    } else {
+                        const suffix = headerList.filter(h => h === header).length > 1 ? "_1" : "";
+                        headerCount[header] = 1;
+                        return `${header}${suffix}`;
+                    }
+                });
+                return headers;
+            }}))
             .on('headers', (headerList) => {
                 headers = headerList;
                 headers.push('attachments'); // Add the new column for attachments
             })
             .on('data', (row) => {
-                const storyId = row['Id'];
-
+                const storyId = row[Object.keys(row)[0]];
                 const storyComments = comments[`${storyId}`];
                 if (storyComments) {
+                    let commentIndex = 1;
+                    let commentField = `Comment_${commentIndex}`;
+                    while (row.hasOwnProperty(commentField)) {
+                        const comment = storyComments.comments[commentIndex - 1];
+                        
+                        if (comment && comment.attachments.length > 0) {
+                            const attachmentsText = `\n---\nAttachments:\n${comment.attachments.map(att => `* ${att.filename}`).join('\n')}\n---\n`;
+                            const regex = /\s*\([^)]*\)\s*$/; // Matches text inside parentheses at the end of the comment
+                            if (regex.test(row[commentField])) {
+                                row[commentField] = row[commentField].replace(regex, attachmentsText + ' $&');
+                            } else {
+                                console.log("No match");
+                            }
+                        }
+                        commentIndex++;
+                        commentField = `Comment_${commentIndex}`;
+
+                    }                    
+
                     row.attachments = storyComments.comments.filter(comment => !_.isEmpty(comment.attachments)).map(comment => comment.attachments.map(att => `* ${att.filename}`).join('\n')).join('\n');
                 } else {
                     row.attachments = '';
@@ -114,6 +146,49 @@ async function addAttachmentNames(comments, exportedStories) {
             });
     });
 }
+
+// async function addAttachmentNames(comments, exportedStories) {
+//     const storiesFilePath = path.join(directoryPath, exportedStories);
+//     const transformedRows = [];
+//     let headers = [];
+
+//     return new Promise((resolve, reject) => {
+//         fs.createReadStream(storiesFilePath)
+//             .pipe(csv())
+//             .on('headers', (headerList) => {
+//                 headers = headerList;
+//                 headers.push('attachments'); // Add the new column for attachments
+//             })
+//             .on('data', (row) => {
+//                 const storyId = row['Id'];
+
+//                 const storyComments = comments[`${storyId}`];
+//                 if (storyComments) {
+//                     row.attachments = storyComments.comments.filter(comment => !_.isEmpty(comment.attachments)).map(comment => comment.attachments.map(att => `* ${att.filename}`).join('\n')).join('\n');
+//                 } else {
+//                     row.attachments = '';
+//                 }
+//                 transformedRows.push(row);
+//             })
+//             .on('end', () => {
+//                 const csvData = parse(transformedRows, { fields: headers });
+//                 const transformedFilePath = path.join(directoryPath, path.basename(exportedStories));
+//                 fs.promises.writeFile(transformedFilePath, csvData)
+//                     .then(() => {
+//                         console.log(`Transformed CSV saved to ${transformedFilePath}`);
+//                         resolve();
+//                     })
+//                     .catch(error => {
+//                         console.error(`Error saving transformed CSV:`, error);
+//                         reject(error);
+//                     });
+//             })
+//             .on('error', (error) => {
+//                 console.error('Error reading CSV:', error);
+//                 reject(error);
+//             });
+//     });
+// }
 
 
 async function saveToFile(fileName, data) {

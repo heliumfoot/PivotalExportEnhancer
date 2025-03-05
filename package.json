@@ -8,8 +8,8 @@
   },
   "dependencies": {
     "axios": "^0.21.1",
-    "csv-parser": "^3.0.0",
-    "json2csv": "^5.0.6",
+    "fast-csv": "^5.0.2",
+    "json2csv": "^6.0.0-alpha.2",
     "lodash": "^4.17.21",
     "yargs": "^17.2.1"
   },
