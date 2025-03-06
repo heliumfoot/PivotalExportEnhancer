@@ -23,7 +23,7 @@ const argv = yargs(hideBin(process.argv))
   .option('directoryPath', {
     alias: 'd',
     type: 'string',
-    description: 'Directory Path',
+    description: 'Path to directory where the resulting transformed CSV will be saved',
     demandOption: true
   })
   .option('exportedStories', {
@@ -33,11 +33,13 @@ const argv = yargs(hideBin(process.argv))
     demandOption: true
   })
   .option('exportedHistory', {
-    alias: 'h',
+    alias: 'x',
     type: 'string',
     description: 'File name for exported history',
     demandOption: true
   })
+  .help('h')
+  .alias('h', 'help')
   .argv;
 
 const apiKey = argv.apiKey;

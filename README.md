@@ -51,6 +51,10 @@ node export_enhancer.js --apiKey=abc123 --projectId=456789 --directoryPath=./dat
 
 This will fetch the project data and create a new version of the exported stories csv which is suitable for import into Jira.
 
+Parameter information is available via:
+```sh
+node export_enhancer.js -h
+```
 
 
 ## README
