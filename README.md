@@ -41,7 +41,7 @@ To run the script, use the following command with named parameters:
 node export_enhancer.js --apiKey=<API_KEY> --projectId=<PROJECT_ID> --directoryPath=<DIRECTORY_PATH> --exportedStories=<EXPORTED_STORIES> --exportedHistory=<EXPORTED_HISTORY>
 ```
 
-Replace `<API_KEY>`, `<PROJECT_ID>`, `<DIRECTORY_PATH>`, `<EXPORTED_STORIES>`, and `<EXPORTED_HISTORY>` with your actual Pivotal Tracker API key, project ID, the directory path where you want to save the fetched data, the file name for exported stories, and the file name for exported history respectively.
+Replace `<API_KEY>`, `<PROJECT_ID>`, `<DIRECTORY_PATH>`, `<EXPORTED_STORIES>`, and `<EXPORTED_HISTORY>` with your actual Pivotal Tracker API key, project ID, the directory path where you want to save the fetched data, the file name for exported stories, and the file name for exported history respectively. API keys are available at https://www.pivotaltracker.com/profile under "API TOKEN".
 
 For example:
 
