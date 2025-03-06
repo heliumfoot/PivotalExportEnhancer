@@ -29,13 +29,13 @@ const argv = yargs(hideBin(process.argv))
   .option('exportedStories', {
     alias: 's',
     type: 'string',
-    description: 'File name for exported stories',
+    description: 'File name for stories exported from PivotalTracker',
     demandOption: true
   })
   .option('exportedHistory', {
     alias: 'x',
     type: 'string',
-    description: 'File name for exported history',
+    description: 'File name for the history exported from PivotalTracker',
     demandOption: true
   })
   .help('h')
